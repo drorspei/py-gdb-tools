@@ -1,10 +1,7 @@
-#include <numeric>
 #include <vector>
-
-using namespace std;
-
+#include <numeric>
 int main() {
-    vector<double> v(240000, 0);
-    iota(v.begin(), v.end(), 0);
-    return 0;
+	std::vector<double> v(240000, 0);
+	std::iota(v.begin(), v.end(), 0);
+	return 0;
 }

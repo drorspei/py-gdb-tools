@@ -13,3 +13,5 @@ There's currently a single thing this project can do: send a vector of doubles f
 Sending a vector from gdb to python is helpful in case you want to plot the vector, do some analysis in the middle of debugging, or compare with other values.
 
 If you're having trouble with the default port of 50010, use `send_double_vec port=PORT symbol_name` in gdb and `vec = recv_double_vec(port=PORT)` in python.
+
+![Image](https://github.com/drorspei/py-gdb-tools/examples/example.gif)
