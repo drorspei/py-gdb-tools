@@ -14,4 +14,4 @@ Sending a vector from gdb to python is helpful in case you want to plot the vect
 
 If you're having trouble with the default port of 50010, use `send_double_vec port=PORT symbol_name` in gdb and `vec = recv_double_vec(port=PORT)` in python.
 
-![Image](https://github.com/drorspei/py-gdb-tools/examples/example.gif)
+![Image](https://github.com/drorspei/py-gdb-tools/blob/master/examples/example.gif)
