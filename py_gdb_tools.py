@@ -35,7 +35,7 @@ def send_double_vec(name, port=50010):
     addr = gdb.parse_and_eval('*{}._M_impl._M_start'.format(name)).address
     length = int(gdb.parse_and_eval('{0}._M_impl._M_finish - {0}._M_impl._M_start'.format(name)))
     sizeof = int(gdb.parse_and_eval('sizeof(*{}._M_impl._M_start)'.format(name)))
-    buff = gdb.inferiors()[0].read_memory(addr, length * sizeof)
+    buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', port))
