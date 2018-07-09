@@ -28,14 +28,43 @@ except ImportError:
 else:
     define_commands()
 
+
+def get_std_vector_buff(name):
+    val = gdb.parse_and_eval(name)
+    if str(val.type).startswith('std::vector<double,'):
+        addr = gdb.parse_and_eval('*{}._M_impl._M_start'.format(name)).address
+        length = int(gdb.parse_and_eval('{0}._M_impl._M_finish - {0}._M_impl._M_start'.format(name)))
+        sizeof = int(gdb.parse_and_eval('sizeof(*{}._M_impl._M_start)'.format(name)))
+        buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
+
+        return buff, length, sizeof
+
+
+def get_eigen_matrix_buff(name):
+    val = gdb.parse_and_eval(name)
+    typ = str(val.type)
+    if typ.startswith('Eigen::Matrix<double,') or typ.startswith('Eigen::VectorXd'):
+        addr = gdb.parse_and_eval('*{}.data()'.format(name)).address
+        length = int(gdb.parse_and_eval('{0}.size()'.format(name)))
+        sizeof = int(gdb.parse_and_eval('sizeof(*{}.data())'.format(name)))
+        buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
+
+        return buff, length, sizeof
+
+
 def send_double_vec(name, port=50010):
     import socket
     import gdb
 
-    addr = gdb.parse_and_eval('*{}._M_impl._M_start'.format(name)).address
-    length = int(gdb.parse_and_eval('{0}._M_impl._M_finish - {0}._M_impl._M_start'.format(name)))
-    sizeof = int(gdb.parse_and_eval('sizeof(*{}._M_impl._M_start)'.format(name)))
-    buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
+    print('got:', name)
+
+    for get_type_func in [get_std_vector_buff, get_eigen_matrix_buff]:
+        res = get_type_func(name)
+        if res is not None:
+            buff, length, sizeof = res
+            break
+    else:
+        raise TypeError("Type isn't std::vector<double> or Eigen::Matrix<double>")
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', port))
