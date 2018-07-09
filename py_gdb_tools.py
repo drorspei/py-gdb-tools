@@ -14,7 +14,7 @@ def define_commands():
                 sym = args[1]
             else:
                 port = 50010
-                sym = arg[0]
+                sym = args[0]
             
             send_double_vec(sym, port)
 
