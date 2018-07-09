@@ -56,8 +56,6 @@ def send_double_vec(name, port=50010):
     import socket
     import gdb
 
-    print('got:', name)
-
     for get_type_func in [get_std_vector_buff, get_eigen_matrix_buff]:
         res = get_type_func(name)
         if res is not None:

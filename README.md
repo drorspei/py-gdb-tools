@@ -14,4 +14,8 @@ Sending a vector from gdb to python is helpful in case you want to plot the vect
 
 If you're having trouble with the default port of 50010, use `send_double_vec port=PORT symbol_name` in gdb and `vec = recv_double_vec(port=PORT)` in python.
 
+## In CLion
+
+When entering `send_double_vec symbol_name` in gdb tab of a running process I get the error `gdb.error: No symbol "s" in current context.`. I think there's a CLion bug that sends only the first character of the symbol name. Instead use: `py send_double_vec("symbol_name")`.
+
 ![Image](https://github.com/drorspei/py-gdb-tools/blob/master/examples/example.gif)
