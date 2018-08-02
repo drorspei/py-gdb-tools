@@ -78,7 +78,7 @@ def send_double_vec(name, port=50010):
     s.connect(('localhost', port))
 
     try:
-        s.sendall(('%016d' % (length * 2)).encode())
+        s.sendall(('%016d' % (length * (sizeof // 8))).encode())
         s.sendall(buff[:length * sizeof])
     finally:
         s.close()
