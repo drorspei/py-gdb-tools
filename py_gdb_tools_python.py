@@ -71,7 +71,7 @@ def read_pgt_file(filepath):
                 break
 
 
-class PgtServer(object):
+class PgtPythonSide(object):
     """
     Server to receive vectors from gdb in background
 
