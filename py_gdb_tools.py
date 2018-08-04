@@ -1,4 +1,90 @@
+import atexit
+import socket
+
 SERIALIZE_VERSION = '1.0'
+
+_server_port = None
+
+
+def gdbprintln(text):
+    def inner():
+        gdb.write('\n(pgt) ' + text + '\n(gdb) ')
+    gdb.post_event(inner)
+
+
+def consume_socket(s):
+    while s.recv(1024):
+        pass
+
+
+def start_server(port=50013):
+    def inner(done_event):
+        global _server_port
+        if _server_port is not None:
+            gdbprintln("server already running on port %r" % _server_port)
+            return
+
+        done.wait(0.5)
+
+        _server_port = port
+        import socket
+        import gdb
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(('localhost', port))
+        except OSError:
+            gdbprintln("server couldn't start since port is already in use")
+            return
+        
+        gdbprintln('server start on port %r' % port)
+        try:
+            while True:
+                s.listen(1)
+                conn, _ = s.accept()
+                try:
+                    name = conn.recv(100).decode().strip()
+                except Exception as e:
+                    consume_socket(conn)
+                    conn.shutdown(socket.SHUT_RDWR)
+                    conn.close()
+                    raise e
+                if name == 'stopgdbservernowplease':
+                    conn.shutdown(socket.SHUT_RDWR)
+                    conn.close()
+                    done_event.set()
+                    break
+                def defer_send():
+                    send_double_vec(name)
+                gdb.post_event(defer_send)
+        finally:
+            _server_port = None
+            s.shutdown(socket.SHUT_RDWR)
+            s.close()
+
+    
+    import threading
+    done = threading.Event()
+
+    def exit_handler():
+        gdbprintln('exiting')
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.connect(('localhost', port))
+            s.sendall(('%100s' % 'stopgdbservernowplease').encode())
+            done.wait(1)
+        except ConnectionRefusedError:
+            pass
+        else:
+            consume_socket(s)
+            s.shutdown(socket.SHUT_RDWR)
+        finally:
+            s.close()
+
+    atexit.register(exit_handler)
+    threading.Thread(target=inner, args=(done,), daemon=True).start()
+
 
 
 try:
@@ -47,7 +133,7 @@ else:
             self.stop_execution = stop_execution
 
         def stop(self):
-            print('saving to file:', self.varname)
+            gdbprintln('saving to file: %s' % self.varname)
             with open(self.output_file, 'ab') as f:
                 f.write(double_vec_to_buffer(self.varname))
             return self.stop_execution
@@ -72,7 +158,7 @@ else:
             self.stop_execution = stop_execution
 
         def stop(self):
-            print('sending to socket:', self.varname)
+            gdbprintln('sending to socket: %s' % self.varname)
             send_double_vec(self.varname, port=self.port)
             return self.stop_execution
 
@@ -85,16 +171,21 @@ else:
             try:
                 break_loc, varname, output_file = arg.split()
             except ValueError:
-                print('usage (no more spaces allowed!): pgt_var_to_file break_location varname output')
+                gdbprintln('usage (no more spaces allowed!): pgt_var_to_file break_location varname output')
                 return
             else:
                 VarToFileBreakpoint(break_loc, varname, output_file)
 
     VarToFile()
 
+    start_server()
+
 
 def get_std_vector_buff(name):
-    val = gdb.parse_and_eval(name)
+    try:
+        val = gdb.parse_and_eval(name)
+    except:
+        return "Gdb couldn't parse name",
     str_type = str(val.type)
     if str_type.startswith('const '):
         str_type = str_type[len('const '):]
@@ -120,7 +211,6 @@ def get_eigen_matrix_buff(name):
         addr = gdb.parse_and_eval('*{}.data()'.format(name)).address
         length = int(gdb.parse_and_eval('{0}.size()'.format(name)))
         sizeof = int(gdb.parse_and_eval('sizeof(*{}.data())'.format(name)))
-        print('sizeof:', sizeof, 'length:', length)
         buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
 
         return buff, length, sizeof
@@ -134,21 +224,24 @@ def double_vec_to_buffer(name):
     for get_type_func in [get_std_vector_buff, get_eigen_matrix_buff]:
         res = get_type_func(name)
         if res is not None:
-            buff, length, sizeof = res
-            return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+            if len(res) == 3:
+                buff, length, sizeof = res
+                return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+            else:
+                return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(res[0]))).encode() + res[0].encode()
     else:
-        raise TypeError("Type '%r' isn't std::vector<double> or Eigen::Matrix<double> or a std::complex variant." % str(gdb.parse_and_eval(name).type))
+        message = "Type '%r' isn't std::vector<double> or Eigen::Matrix<double> or a std::complex variant." % str(gdb.parse_and_eval(name).type)
+        return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(message))).encode() + message.encode()
 
 
 def send_double_vec(name, port=50010):
-    import socket
-    
-    vec = double_vec_to_buffer(name)
+    buff = double_vec_to_buffer(name)
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', port))
 
     try:
-        s.sendall(vec)
+        s.sendall(buff)
     finally:
+        s.shutdown(socket.SHUT_RDWR)
         s.close()

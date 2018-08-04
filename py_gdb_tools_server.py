@@ -12,6 +12,11 @@ def read_double_vec_1_0(readfunc, verbose=True):
     name = readfunc(100).strip()
     length = int(readfunc(16))
 
+    if length < 0:
+        err = readfunc(-length)
+        print "error for '%s': %s" % (name, err)
+        return name, err
+
     if verbose:
         print 'reading: %s, of length %d' % (name, length)
 
@@ -80,6 +85,9 @@ class PgtServer(object):
         self.port = port
         self.received = []
         self.vars = collections.OrderedDict()
+        self.wait_event = threading.Event()
+        self.waiting_on = None
+        self.result = None
 
     def start(self):
         thread = threading.Thread(target=self._run)
@@ -93,6 +101,9 @@ class PgtServer(object):
                 name, arr = recv_named_double_vec(self.port)
                 self.received.append((name, arr))
                 self.vars[name] = arr
+                if self.waiting_on is not None and self.waiting_on.strip() == name:
+                    self.result = arr
+                    self.wait_event.set()
             except StopIteration:
                 print "done running :)"
                 break
@@ -101,3 +112,20 @@ class PgtServer(object):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('localhost', self.port))
         s.close()
+
+    def get(self, name, pgt_server_port=50013, timeout=5):
+        self.waiting_on = name
+        self.wait_event.clear()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('localhost', pgt_server_port))
+        try:
+            s.sendall(('%100s' % name).encode())
+            if self.wait_event.wait(timeout):
+                return self.result
+            else:
+                raise ValueError("Server didn't respond :(")
+        finally:
+            self.wait_event.clear()
+            self.waiting_on = None
+            s.shutdown(socket.SHUT_RDWR)
+            s.close()
