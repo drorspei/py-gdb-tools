@@ -1,5 +1,13 @@
 # py-gdb-tools
-Tools for interacting with gdb from another python process
+A library for extracting values from gdb - in a separate python process.
+
+Currently you can only extract `std::vector<double>` or `Eigen::Matrix<double>`, or the same classes with `double` replaced by `std::complex<double>`. Later editions will add support for all primitives and combinations of stl classes and primitives. It's just that I personally need to debug vectors of doubles a lot...
+
+Extracting can mean one of two things: either sending the value over to a running python process, or saving to a file that can be read later with python. The first option is useful for dynamic debugging - get to a breakpoint, send the value over to python, analyze it a bit, say, with a plot, then find your bug. The second option is useful for letting the program run for a while, saving values to a file as it goes, then reading that file and looking at everything somehow, say, with a big plot. Sometime soon I'll write a similar feature for pdb ("python's gdb"), and then you could automatically compare values from a c++ process with values from a python process.
+
+In the rest of this readme I explain how to send values over to python, how to save to and read from a file, how to save automatically without stopping at the breakpoints, and how to send automatically to a running python process. There are also explanations of how to send single values with old syntax that I was using as I was writing this library, with a nifty screen cast gif, though these are less relevant now.
+
+The automatic file saving approach allows you to gather logs of a run without instrumenting your program. The main trade-off here is between the performance hit of running under gdb, and the time it would take to write logging into your code. For certain application, such as comparing c++ code with python code (which I do often), the performance of the run is not an issue, while adding logging is quite the hassle. py-gdb-tools offers a quick solution for big debugging jobs.
 
 ## Getting vector/Eigen::Matrix values from gdb in python:
 
@@ -12,8 +20,10 @@ Running `py_gdb_tools_gdb.py` (with `source`) starts a server in the background 
 5. run python and import/execfile `py_gdb_tools_python.py`,
 6. enter in python:
 
-    pgt = PgtPythonSide().start()
-    val = pgt.get('symbol_name')
+```
+pgt = PgtPythonSide().start()
+val = pgt.get('symbol_name')
+```
 
 7. that's it, you have a numpy array in `val`.
 
@@ -34,7 +44,7 @@ It's also easy to create a script that will add breakpoints that save variables 
 
     VarToFileBreakpoint('examples/example.cpp:6', 'v', '/tmp/example.pgt')
 
-Now we can run gdb, source `py_gdb_tools_gdb.py`, then source `examples/example.py`, and finally let gdb run. The program will run and exit normally, and we'll have a new file at `/tmp/example.pgt`. We can read the file using `read_pgt_file`.
+Now we can run gdb, source `py_gdb_tools_gdb.py`, then source `examples/example.py`, and finally let gdb run. The program will run and exit normally, and we'll have a new file at `/tmp/example.pgt`. We can read the file using `read_pgt_file` from `py_gdb_tools_python.py`.
 
 ## Automating sending values to a server:
 
