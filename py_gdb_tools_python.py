@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import socket
 import threading
 import collections
@@ -14,11 +16,11 @@ def read_double_vec_1_0(readfunc, verbose=True):
 
     if length < 0:
         err = readfunc(-length)
-        print "error for '%s': %s" % (name, err)
+        print("error for '%s': %s" % (name, err))
         return name, err
 
     if verbose:
-        print 'reading: %s, of length %d' % (name, length)
+        print('reading: %s, of length %d' % (name, length))
 
     arr = np.empty(length, np.float64)
     buff = arr.data
@@ -44,9 +46,10 @@ def read_by_version(readfunc):
         raise IOError('serialize version is corrupt.')
 
 
-def recv_named_double_vec(port=50010):
+def recv_named_double_vec(port=50011):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(('localhost', port))
         s.listen(1)
         conn, _ = s.accept()
@@ -81,7 +84,7 @@ class PgtPythonSide(object):
 
         `vars` - an ordered dictionary of names to most recent sent data.
     """
-    def __init__(self, port=50010):
+    def __init__(self, port=50011):
         self.port = port
         self.received = []
         self.vars = collections.OrderedDict()
@@ -105,7 +108,7 @@ class PgtPythonSide(object):
                     self.result = arr
                     self.wait_event.set()
             except StopIteration:
-                print "done running :)"
+                print("done running :)")
                 break
 
     def stop(self):
@@ -113,13 +116,25 @@ class PgtPythonSide(object):
         s.connect(('localhost', self.port))
         s.close()
 
-    def get(self, name, pgt_server_port=50013, timeout=5):
+    def get(self, name, pgt_server_port=50013, myport=50014, timeout=5):
         self.waiting_on = name
         self.wait_event.clear()
+
+        def inner():
+            name, arr = recv_named_double_vec(myport)
+            self.received.append((name, arr))
+            self.vars[name] = arr
+            self.result = arr
+            self.wait_event.set()
+
+        thread = threading.Thread(target=inner)
+        thread.daemon = True
+        thread.start()
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('localhost', pgt_server_port))
         try:
-            s.sendall(('%100s' % name).encode())
+            s.sendall(('%016d%100s' % (myport, name)).encode())
             if self.wait_event.wait(timeout):
                 return self.result
             else:

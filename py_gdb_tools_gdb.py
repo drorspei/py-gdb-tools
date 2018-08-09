@@ -4,6 +4,7 @@ import socket
 SERIALIZE_VERSION = '1.0'
 
 _server_port = None
+_server_dones = {}
 
 
 def gdbprintln(text):
@@ -16,8 +17,23 @@ def consume_socket(s):
     while s.recv(1024):
         pass
 
+def stop_server(port):
+    gdbprintln('exiting')
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect(('localhost', port))
+        s.sendall(('%100s' % 'stopgdbservernowplease').encode())
+        _server_dones[port].wait(1)
+    except ConnectionRefusedError:
+        pass
+    else:
+        consume_socket(s)
+        s.shutdown(socket.SHUT_RDWR)
+    finally:
+        s.close()
 
-def start_server(port=50013):
+
+def start_server(port=50018):
     def inner(done_event):
         global _server_port
         if _server_port is not None:
@@ -44,7 +60,9 @@ def start_server(port=50013):
                 s.listen(1)
                 conn, _ = s.accept()
                 try:
-                    name = conn.recv(100).decode().strip()
+                    buff = conn.recv(116).decode()
+                    pyport = int(buff[:16])
+                    name = buff[16:].strip()
                 except Exception as e:
                     consume_socket(conn)
                     conn.shutdown(socket.SHUT_RDWR)
@@ -56,7 +74,7 @@ def start_server(port=50013):
                     done_event.set()
                     break
                 def defer_send():
-                    send_double_vec(name)
+                    send_double_vec(name, pyport)
                 gdb.post_event(defer_send)
         finally:
             _server_port = None
@@ -67,22 +85,8 @@ def start_server(port=50013):
     import threading
     done = threading.Event()
 
-    def exit_handler():
-        gdbprintln('exiting')
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.connect(('localhost', port))
-            s.sendall(('%100s' % 'stopgdbservernowplease').encode())
-            done.wait(1)
-        except ConnectionRefusedError:
-            pass
-        else:
-            consume_socket(s)
-            s.shutdown(socket.SHUT_RDWR)
-        finally:
-            s.close()
-
-    atexit.register(exit_handler)
+    _server_dones[port] = done
+    atexit.register(stop_server, port)
     threading.Thread(target=inner, args=(done,), daemon=True).start()
 
 
@@ -205,7 +209,7 @@ def get_eigen_matrix_buff(name):
     if str_type.startswith('const '):
         str_type = str_type[len('const '):]
 
-    starts = ['Eigen::Matrix<double,', 'Eigen::VectorXd', 'Eigen::VectorXcd', 'Eigen::Matrix<std::complex<double,']
+    starts = ['Eigen::Matrix', 'Eigen::VectorXd', 'Eigen::VectorXcd']
 
     if any(str_type.startswith(start) for start in starts):
         addr = gdb.parse_and_eval('*{}.data()'.format(name)).address
@@ -226,7 +230,8 @@ def double_vec_to_buffer(name):
         if res is not None:
             if len(res) == 3:
                 buff, length, sizeof = res
-                return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+                ret = ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+                return ret
             else:
                 return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(res[0]))).encode() + res[0].encode()
     else:
@@ -234,7 +239,7 @@ def double_vec_to_buffer(name):
         return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(message))).encode() + message.encode()
 
 
-def send_double_vec(name, port=50010):
+def send_double_vec(name, port=50077):
     buff = double_vec_to_buffer(name)
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
