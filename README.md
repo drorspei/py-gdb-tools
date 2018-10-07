@@ -85,3 +85,7 @@ If you're going to be sending many values, you can use the `PgtPythonSide` class
 4. enter `pgt = PgtPythonSide().start()` in python,
 5. enter `send_double_vec symbol_name`,
 6. you can now access the variable using `pgt.received[-1]` or `pgt.vars['symbol_name']`
+
+### Requirements
+
+Um this is a bit awkward... Currently `py_gdb_tools_gdb.py` is written for python 3, and `py_gdb_tools_python.py` is written for python 2.7. This is because my gdb runs python 3, but I use python 2.7 at my work. This can easily be dealt with if the need arises.
