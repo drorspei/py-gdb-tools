@@ -6,10 +6,10 @@ import collections
 import numpy as np
 
 
-SERIALIZE_VERSION = '1.0'
-# ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
 STOP_SOCKET = 'stopsocket'
 
+
+# ('%10s%100s%016d' % (SERIALIZE_VERSION=='1.0', name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
 def read_double_vec_1_0(readfunc, verbose=True):
     name = readfunc(100).strip()
     length = int(readfunc(16))
@@ -35,18 +35,53 @@ def read_double_vec_1_0(readfunc, verbose=True):
 
     return name, arr
 
+# ('%10s%100s%04d%016d' % (SERIALIZE_VERSION=='2.0', name, type, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+def read_2_0(readfunc, verbose=True):
+    name = readfunc(100).strip()
+    typ = int(readfunc(4))
 
-def read_by_version(readfunc):
+    if typ <= 0:
+        length = int(readfunc(16))
+
+        if length < 0:
+            err = readfunc(-length)
+            print("error for '%s': %s" % (name, err))
+            return name, err
+
+        if verbose:
+            print('reading: %s, of length %d' % (name, length))
+
+        arr = np.empty(length, np.float64)
+
+        buff = arr.data
+        total_bytes = 8 * length
+        received_bytes = 0
+
+        while received_bytes < total_bytes:
+            data = readfunc(min(1024 * 16, total_bytes - received_bytes))
+            if not data:
+                raise IOError("not enough data, file/socket is corrupt.")
+            buff[received_bytes:received_bytes + len(data)] = data
+            received_bytes += len(data)
+
+        return name, arr
+    elif typ == 1:
+        return name, int(readfunc(25))
+
+
+def read_by_version(readfunc, verbose=False):
     version = readfunc(10)
     if version == '%10s' % '1.0':
-        return read_double_vec_1_0(readfunc)
+        return read_double_vec_1_0(readfunc, verbose=verbose)
+    elif version == '%10s' % '2.0':
+        return read_2_0(readfunc, verbose=verbose)
     elif version == '':
         raise StopIteration("didn't receive more data.")
     else:
         raise IOError('serialize version is corrupt.')
 
 
-def recv_named_double_vec(port=50011):
+def recv_named_double_vec(port=50011, verbose=False):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -54,22 +89,22 @@ def recv_named_double_vec(port=50011):
         s.listen(1)
         conn, _ = s.accept()
         try:
-            return read_by_version(conn.recv)
+            return read_by_version(conn.recv, verbose=verbose)
         finally:
             conn.close()
     finally:
         s.close()
 
 
-def recv_double_vec(port=50010):
-    return recv_named_double_vec(port)[1]
+def recv_double_vec(port=50010, verbose=False):
+    return recv_named_double_vec(port, verbose=verbose)[1]
 
 
-def read_pgt_file(filepath):
+def read_pgt_file(filepath, verbose=False):
     with open(filepath, 'rb') as f:
         while True:
             try:
-                yield read_by_version(f.read)
+                yield read_by_version(f.read, verbose=verbose)
             except StopIteration:
                 break
 

@@ -1,2 +1,3 @@
-# VarToFileBreakpoint('example.cpp:6', 'v', '/tmp/example.pgt')
-VarToServerBreakpoint('example.cpp:6', 'v', stop_execution=True)
+VarToFileBreakpoint('example.cpp:5', 'a', '/tmp/example.pgt', stop_execution=False, verbose=False)  # Prints variables `a` at line 5  to file.
+VarToFileBreakpoint('example.cpp:5', '3 * b', '/tmp/example.pgt', stop_execution=False, verbose=True, num_up=1)  # Prints 3 times variable `b` from up the stack, on the same breakpoint of line 5, to the file.
+VarToFileBreakpoint('example.cpp:11', '1729', '/tmp/example.pgt', stop_execution=False, verbose=True)  # Prints the constant 1729 when reaching line 11. Useful for marking execution flow.

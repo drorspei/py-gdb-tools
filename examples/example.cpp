@@ -1,7 +1,12 @@
-#include <vector>
-#include <numeric>
+#include <cstddef>
+
+
+int foo(size_t a) {
+	return a + 5;
+}
+
 int main() {
-	std::vector<double> v(240000, 0);
-	std::iota(v.begin(), v.end(), 0);
-	return 0;
+	size_t b = 5;
+	size_t c = foo(b);
+	return c;
 }

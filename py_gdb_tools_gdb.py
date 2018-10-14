@@ -1,7 +1,7 @@
 import atexit
 import socket
 
-SERIALIZE_VERSION = '1.0'
+SERIALIZE_VERSION = '2.0'
 
 _server_port = None
 _server_dones = {}
@@ -87,7 +87,9 @@ def start_server(port=50018):
 
     _server_dones[port] = done
     atexit.register(stop_server, port)
-    threading.Thread(target=inner, args=(done,), daemon=True).start()
+    thread = threading.Thread(target=inner, args=(done,), daemon=True)
+    thread.daemon = True
+    thread.start()
 
 
 
@@ -118,7 +120,7 @@ else:
     SendDoubleVectorCommand()
 
     class VarToFileBreakpoint(gdb.Breakpoint):
-        def __init__(self, breakpoint, varname, output_file, stop_execution=False):
+        def __init__(self, breakpoint, varname, output_file, stop_execution=False, verbose=False, num_up=0):
             """
             Save (really append) variable to file at breakpoint
 
@@ -135,15 +137,27 @@ else:
             self.varname = varname
             self.output_file = output_file
             self.stop_execution = stop_execution
+            self.verbose = verbose
+            self.num_up = num_up
 
         def stop(self):
-            gdbprintln('saving to file: %s' % self.varname)
-            with open(self.output_file, 'ab') as f:
-                f.write(double_vec_to_buffer(self.varname))
-            return self.stop_execution
+            if self.verbose:
+                gdbprintln('saving to file: %s' % self.varname)
+            
+            if self.num_up:
+                gdb.execute("up-silently {}".format(self.num_up))
+
+            try:
+                with open(self.output_file, 'ab') as f:
+                    f.write(double_vec_to_buffer(self.varname))
+                return self.stop_execution
+            finally:
+                if self.num_up:
+                    gdb.execute("down-silently {}".format(self.num_up))
+
 
     class VarToServerBreakpoint(gdb.Breakpoint):
-        def __init__(self, breakpoint, varname, port=50010, stop_execution=False):
+        def __init__(self, breakpoint, varname, port=50010, stop_execution=False, verbose=False):
             """
             Send variable to listening python.
 
@@ -160,9 +174,11 @@ else:
             self.varname = varname
             self.port = port
             self.stop_execution = stop_execution
+            self.verbose = verbose
 
         def stop(self):
-            gdbprintln('sending to socket: %s' % self.varname)
+            if self.verbose:
+                gdbprintln('sending to socket: %s' % self.varname)
             send_double_vec(self.varname, port=self.port)
             return self.stop_execution
 
@@ -185,11 +201,16 @@ else:
     start_server()
 
 
+def serialize_error_message(name, message):
+    return ('%10s%100s%04d%016d%s' % (SERIALIZE_VERSION, name, 0, -len(message), message)).encode()
+
+
 def get_std_vector_buff(name):
     try:
         val = gdb.parse_and_eval(name)
     except:
-        return "Gdb couldn't parse name",
+        return serialize_error_message(name, "Gdb couldn't parse name")
+
     str_type = str(val.type)
     if str_type.startswith('const '):
         str_type = str_type[len('const '):]
@@ -200,7 +221,7 @@ def get_std_vector_buff(name):
         sizeof = int(gdb.parse_and_eval('sizeof(*{}._M_impl._M_start)'.format(name)))
         buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
 
-        return buff, length, sizeof
+        return ('%10s%100s%04d%016d' % (SERIALIZE_VERSION, name, 0, length * (sizeof // 8))).encode() + buff[:length * sizeof]
 
 
 def get_eigen_matrix_buff(name):
@@ -217,7 +238,19 @@ def get_eigen_matrix_buff(name):
         sizeof = int(gdb.parse_and_eval('sizeof(*{}.data())'.format(name)))
         buff = gdb.selected_inferior().read_memory(addr, length * sizeof)
 
-        return buff, length, sizeof
+        return ('%10s%100s%04d%016d' % (SERIALIZE_VERSION, name, 0, length * (sizeof // 8))).encode() + buff[:length * sizeof]
+
+
+def get_single_integer(name):
+    val = gdb.parse_and_eval(name)
+    str_type = str(val.type)
+    if str_type.startswith('const '):
+        str_type = str_type[len('const '):]
+
+    starts = ['size_t', 'std::size_t', 'unsigned long', 'int', 'unsigned int']
+
+    if any(str_type.startswith(start) for start in starts):
+        return ('%10s%100s%04d%025d' % (SERIALIZE_VERSION, name, 1, int(val))).encode()
 
 
 def double_vec_to_buffer(name):
@@ -225,18 +258,13 @@ def double_vec_to_buffer(name):
 
     assert len(name) < 100, "variable name must be less than 100 characters"
 
-    for get_type_func in [get_std_vector_buff, get_eigen_matrix_buff]:
+    for get_type_func in [get_std_vector_buff, get_eigen_matrix_buff, get_single_integer]:
         res = get_type_func(name)
         if res is not None:
-            if len(res) == 3:
-                buff, length, sizeof = res
-                ret = ('%10s%100s%016d' % (SERIALIZE_VERSION, name, length * (sizeof // 8))).encode() + buff[:length * sizeof]
-                return ret
-            else:
-                return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(res[0]))).encode() + res[0].encode()
+            return res
     else:
-        message = "Type '%r' isn't std::vector<double> or Eigen::Matrix<double> or a std::complex variant." % str(gdb.parse_and_eval(name).type)
-        return ('%10s%100s%016d' % (SERIALIZE_VERSION, name, -len(message))).encode() + message.encode()
+        message = "Type '%r' wasn't recognised." % str(gdb.parse_and_eval(name).type)
+        return serialize_error_message(name, message)
 
 
 def send_double_vec(name, port=50077):

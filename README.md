@@ -1,7 +1,7 @@
 # py-gdb-tools
 A library for extracting values from gdb - in a separate python process.
 
-Currently you can only extract `std::vector<double>` or `Eigen::Matrix<double>`, or the same classes with `double` replaced by `std::complex<double>`. Later editions will add support for all primitives and combinations of stl classes and primitives. It's just that I personally need to debug vectors of doubles a lot...
+Currently you can extract `std::vector<double>` or `Eigen::Matrix<double>`, and int like primitives. Later editions will add support for all primitives and combinations of stl classes and primitives.
 
 Extracting can mean one of two things: either sending the value over to a running python process, or saving to a file that can be read later with python. The first option is useful for dynamic debugging - get to a breakpoint, send the value over to python, analyze it a bit, say, with a plot, then find your bug. The second option is useful for letting the program run for a while, saving values to a file as it goes, then reading that file and looking at everything somehow, say, with a big plot. Sometime soon I'll write a similar feature for pdb ("python's gdb"), and then you could automatically compare values from a c++ process with values from a python process.
 
@@ -14,7 +14,7 @@ The automatic file saving approach allows you to gather logs of a run without in
 Running `py_gdb_tools_gdb.py` (with `source`) starts a server in the background that listens to requests for values of vectors/Eigen matrices. Here's how to use it:
 
 1. Run gdb on your process,
-2. enter `source /path/tp/py_gdb_tools_gdb.py`,
+2. enter `source /path/to/py_gdb_tools_gdb.py`,
 3. set a breakpoint somewhere,
 4. run the process and reach the breakpoint,
 5. run python and import/execfile `py_gdb_tools_python.py`,
