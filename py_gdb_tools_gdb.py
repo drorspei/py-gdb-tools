@@ -22,7 +22,7 @@ def stop_server(port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.connect(('localhost', port))
-        s.sendall(('%100s' % 'stopgdbservernowplease').encode())
+        s.sendall(('%16d%100s' % (0, 'stopgdbservernowplease')).encode())
         _server_dones[port].wait(1)
     except ConnectionRefusedError:
         pass
